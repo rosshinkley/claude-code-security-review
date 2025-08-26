@@ -524,7 +524,9 @@ def main():
         
         # Output JSON to stdout
         print(json.dumps(output, indent=2))
-        with open('./ccs-output.json', 'w') as f:
+        filename='./ccs-output.json'
+        print(f"attempting to write results to {filename}")
+        with open(filename, 'w') as f:
             f.write(json.dumps(output, indent=2))
         
         # Exit with appropriate code
