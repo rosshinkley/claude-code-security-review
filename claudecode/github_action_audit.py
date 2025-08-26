@@ -524,9 +524,8 @@ def main():
         
         # Output JSON to stdout
         print(json.dumps(output, indent=2))
-        if os.path.isdir("/output"):
-            with open('/output/ccs-output.json', 'w') as f:
-                f.write(json.dumps(output, indent=2))
+        with open('./ccs-output.json', 'w') as f:
+            f.write(json.dumps(output, indent=2))
         
         # Exit with appropriate code
         high_severity_count = len([f for f in kept_findings if f.get('severity', '').upper() == 'HIGH'])
