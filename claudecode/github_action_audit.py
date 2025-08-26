@@ -525,7 +525,7 @@ def main():
         # Output JSON to stdout
         print(json.dumps(output, indent=2))
         if os.path.isdir("/output"):
-            with open('/output/ccs-output.json') as f:
+            with open('/output/ccs-output.json', 'w') as f:
                 f.write(json.dumps(output, indent=2))
         
         # Exit with appropriate code
