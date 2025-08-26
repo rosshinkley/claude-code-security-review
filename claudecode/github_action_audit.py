@@ -489,13 +489,12 @@ def main():
         
         # Generate security audit prompt
         prompt = get_security_audit_prompt(github_url, custom_scan_instructions=custom_scan_instructions)
-        print(prompt)
         # Run Claude Code security audit
         # Get repo directory from environment or use current directory
         repo_path = os.environ.get('REPO_PATH')
         repo_dir = Path(repo_path) if repo_path else Path.cwd()
+        print("about to request findings (this will take a minute)")
         success, error_msg, results = claude_runner.run_security_audit(repo_dir, prompt)
-        print(results)
                
         # Filter findings to reduce false positives
         original_findings = results.get('findings', [])
@@ -525,6 +524,9 @@ def main():
         
         # Output JSON to stdout
         print(json.dumps(output, indent=2))
+        if os.path.isdir("/output"):
+            with open('/output/ccs-output.json') as f:
+                f.write(json.dumps(output, indent=2))
         
         # Exit with appropriate code
         high_severity_count = len([f for f in kept_findings if f.get('severity', '').upper() == 'HIGH'])
