@@ -1,6 +1,6 @@
 """Security audit prompt templates."""
 
-def get_security_audit_prompt(pr_data, pr_diff=None, include_diff=True, custom_scan_instructions=None):
+def get_security_audit_prompt(github_url, custom_scan_instructions=None):
     """Generate security audit prompt for Claude Code.
     
     Args:
@@ -13,25 +13,8 @@ def get_security_audit_prompt(pr_data, pr_diff=None, include_diff=True, custom_s
         Formatted prompt string
     """
     
-    files_changed = "\n".join([f"- {f['filename']}" for f in pr_data['files']])
-    
     # Add diff section if provided and include_diff is True
     diff_section = ""
-    if pr_diff and include_diff:
-        diff_section = f"""
-
-PR DIFF CONTENT:
-```
-{pr_diff}
-```
-
-Review the complete diff above. This contains all code changes in the PR.
-"""
-    elif pr_diff and not include_diff:
-        diff_section = """
-
-NOTE: PR diff was omitted due to size constraints. Please use the file exploration tools to examine the specific files that were changed in this PR.
-"""
     
     # Add custom security categories if provided
     custom_categories_section = ""
@@ -39,20 +22,10 @@ NOTE: PR diff was omitted due to size constraints. Please use the file explorati
         custom_categories_section = f"\n{custom_scan_instructions}\n"
     
     return f"""
-You are a senior security engineer conducting a focused security review of GitHub PR #{pr_data['number']}: "{pr_data['title']}"
-
-CONTEXT:
-- Repository: {pr_data.get('head', {}).get('repo', {}).get('full_name', 'unknown')}
-- Author: {pr_data['user']}
-- Files changed: {pr_data['changed_files']}
-- Lines added: {pr_data['additions']}
-- Lines deleted: {pr_data['deletions']}
-
-Files modified:
-{files_changed}{diff_section}
+You are a senior security engineer conducting a focused security review of GitHub repository located at {github_url}.
 
 OBJECTIVE:
-Perform a security-focused code review to identify HIGH-CONFIDENCE security vulnerabilities that could have real exploitation potential. This is not a general code review - focus ONLY on security implications newly added by this PR. Do not comment on existing security concerns.
+Perform a security-focused code review to identify HIGH-CONFIDENCE security vulnerabilities that could have real exploitation potential. This is not a general code review - focus ONLY on security implications within this repository.
 
 CRITICAL INSTRUCTIONS:
 1. MINIMIZE FALSE POSITIVES: Only flag issues where you're >80% confident of actual exploitability
@@ -118,7 +91,7 @@ Phase 2 - Comparative Analysis:
 - Flag code that introduces new attack surfaces
 
 Phase 3 - Vulnerability Assessment:
-- Examine each modified file for security implications
+- Examine each file for security implications
 - Trace data flow from user inputs to sensitive operations
 - Look for privilege boundaries being crossed unsafely
 - Identify injection points and unsafe deserialization
@@ -170,7 +143,7 @@ IMPORTANT EXCLUSIONS - DO NOT REPORT:
 - Memory consumption or CPU exhaustion issues.
 - Lack of input validation on non-security-critical fields. If there isn't a proven problem from a lack of input validation, don't report it.
 
-Begin your analysis now. Use the repository exploration tools to understand the codebase context, then analyze the PR changes for security implications.
+Begin your analysis now. Use the repository exploration tools to understand the codebase context, then analyze the code for security implications.
 
 Your final reply must contain the JSON and nothing else. You should not reply again after outputting the JSON.
 """

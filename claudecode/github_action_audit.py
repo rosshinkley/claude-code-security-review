@@ -58,83 +58,6 @@ class GitHubActionClient:
         if self.excluded_dirs:
             print(f"[Debug] Excluded directories: {self.excluded_dirs}", file=sys.stderr)
     
-    def get_pr_data(self, repo_name: str, pr_number: int) -> Dict[str, Any]:
-        """Get PR metadata and files from GitHub API.
-        
-        Args:
-            repo_name: Repository name in format "owner/repo"
-            pr_number: Pull request number
-            
-        Returns:
-            Dictionary containing PR data
-        """
-        # Get PR metadata
-        pr_url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
-        response = requests.get(pr_url, headers=self.headers)
-        response.raise_for_status()
-        pr_data = response.json()
-        
-        # Get PR files with pagination support
-        files_url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/files?per_page=100"
-        response = requests.get(files_url, headers=self.headers)
-        response.raise_for_status()
-        files_data = response.json()
-        
-        return {
-            'number': pr_data['number'],
-            'title': pr_data['title'],
-            'body': pr_data.get('body', ''),
-            'user': pr_data['user']['login'],
-            'created_at': pr_data['created_at'],
-            'updated_at': pr_data['updated_at'],
-            'state': pr_data['state'],
-            'head': {
-                'ref': pr_data['head']['ref'],
-                'sha': pr_data['head']['sha'],
-                'repo': {
-                    'full_name': pr_data['head']['repo']['full_name'] if pr_data['head']['repo'] else repo_name
-                }
-            },
-            'base': {
-                'ref': pr_data['base']['ref'],
-                'sha': pr_data['base']['sha']
-            },
-            'files': [
-                {
-                    'filename': f['filename'],
-                    'status': f['status'],
-                    'additions': f['additions'],
-                    'deletions': f['deletions'],
-                    'changes': f['changes'],
-                    'patch': f.get('patch', '')
-                }
-                for f in files_data
-                if not self._is_excluded(f['filename'])
-            ],
-            'additions': pr_data['additions'],
-            'deletions': pr_data['deletions'],
-            'changed_files': pr_data['changed_files']
-        }
-    
-    def get_pr_diff(self, repo_name: str, pr_number: int) -> str:
-        """Get complete PR diff in unified format.
-        
-        Args:
-            repo_name: Repository name in format "owner/repo"
-            pr_number: Pull request number
-            
-        Returns:
-            Complete PR diff in unified format
-        """
-        url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
-        headers = dict(self.headers)
-        headers['Accept'] = 'application/vnd.github.diff'
-        
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        
-        return self._filter_generated_files(response.text)
-    
     def _is_excluded(self, filepath: str) -> bool:
         """Check if a file should be excluded based on directory patterns."""
         for excluded_dir in self.excluded_dirs:
@@ -371,7 +294,7 @@ def get_environment_config() -> Tuple[str, int]:
     return repo_name, pr_number
 
 
-def initialize_clients() -> Tuple[GitHubActionClient, SimpleClaudeRunner]:
+def initialize_clients() -> SimpleClaudeRunner:
     """Initialize GitHub and Claude clients.
     
     Returns:
@@ -381,16 +304,11 @@ def initialize_clients() -> Tuple[GitHubActionClient, SimpleClaudeRunner]:
         ConfigurationError: If client initialization fails
     """
     try:
-        github_client = GitHubActionClient()
-    except Exception as e:
-        raise ConfigurationError(f'Failed to initialize GitHub client: {str(e)}')
-    
-    try:
         claude_runner = SimpleClaudeRunner()
     except Exception as e:
         raise ConfigurationError(f'Failed to initialize Claude runner: {str(e)}')
         
-    return github_client, claude_runner
+    return claude_runner
 
 
 def initialize_findings_filter(custom_filtering_instructions: Optional[str] = None) -> FindingsFilter:
@@ -454,7 +372,7 @@ def run_security_audit(claude_runner: SimpleClaudeRunner, prompt: str) -> Dict[s
 
 
 def apply_findings_filter(findings_filter, original_findings: List[Dict[str, Any]], 
-                         pr_context: Dict[str, Any], github_client: GitHubActionClient) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
+                         pr_context: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
     """Apply findings filter to reduce false positives.
     
     Args:
@@ -486,9 +404,9 @@ def apply_findings_filter(findings_filter, original_findings: List[Dict[str, Any
     directory_excluded_findings = []
     
     for finding in kept_findings:
-        if _is_finding_in_excluded_directory(finding, github_client):
-            directory_excluded_findings.append(finding)
-        else:
+    #    if _is_finding_in_excluded_directory(finding, github_client):
+    #        directory_excluded_findings.append(finding)
+    #    else:
             final_kept_findings.append(finding)
     
     # Update excluded findings list
@@ -520,13 +438,6 @@ def _is_finding_in_excluded_directory(finding: Dict[str, Any], github_client: Gi
 def main():
     """Main execution function for GitHub Action."""
     try:
-        # Get environment configuration
-        try:
-            repo_name, pr_number = get_environment_config()
-        except ConfigurationError as e:
-            print(json.dumps({'error': str(e)}))
-            sys.exit(EXIT_CONFIGURATION_ERROR)
-        
         # Load custom filtering instructions if provided
         custom_filtering_instructions = None
         filtering_file = os.environ.get('FALSE_POSITIVE_FILTERING_INSTRUCTIONS', '')
@@ -549,9 +460,16 @@ def main():
             except Exception as e:
                 logger.warning(f"Failed to read security scan instructions file {scan_file}: {e}")
         
+        github_url = None
+        github_url = os.environ.get('GITHUB_URL', '')
+        if not github_url:
+            print(f"github url must be specified")
+            sys.exit(99)
+
+
         # Initialize components
         try:
-            github_client, claude_runner = initialize_clients()
+            claude_runner = initialize_clients()
         except ConfigurationError as e:
             print(json.dumps({'error': str(e)}))
             sys.exit(EXIT_CONFIGURATION_ERROR)
@@ -569,54 +487,31 @@ def main():
             print(json.dumps({'error': f'Claude Code not available: {claude_error}'}))
             sys.exit(EXIT_GENERAL_ERROR)
         
-        # Get PR data
-        try:
-            pr_data = github_client.get_pr_data(repo_name, pr_number)
-            pr_diff = github_client.get_pr_diff(repo_name, pr_number)
-        except Exception as e:
-            print(json.dumps({'error': f'Failed to fetch PR data: {str(e)}'}))
-            sys.exit(EXIT_GENERAL_ERROR)
-                
         # Generate security audit prompt
-        prompt = get_security_audit_prompt(pr_data, pr_diff, custom_scan_instructions=custom_scan_instructions)
-        
+        prompt = get_security_audit_prompt(github_url, custom_scan_instructions=custom_scan_instructions)
+        print(prompt)
         # Run Claude Code security audit
         # Get repo directory from environment or use current directory
         repo_path = os.environ.get('REPO_PATH')
         repo_dir = Path(repo_path) if repo_path else Path.cwd()
         success, error_msg, results = claude_runner.run_security_audit(repo_dir, prompt)
-        
-        # If prompt is too long, retry without diff
-        if not success and error_msg == "PROMPT_TOO_LONG":
-            print(f"[Info] Prompt too long, retrying without diff. Original prompt length: {len(prompt)} characters", file=sys.stderr)
-            prompt_without_diff = get_security_audit_prompt(pr_data, pr_diff, include_diff=False, custom_scan_instructions=custom_scan_instructions)
-            print(f"[Info] New prompt length: {len(prompt_without_diff)} characters", file=sys.stderr)
-            success, error_msg, results = claude_runner.run_security_audit(repo_dir, prompt_without_diff)
-        
-        if not success:
-            print(json.dumps({'error': f'Security audit failed: {error_msg}'}))
-            sys.exit(EXIT_GENERAL_ERROR)
-        
+        print(results)
+               
         # Filter findings to reduce false positives
         original_findings = results.get('findings', [])
         
         # Prepare PR context for better filtering
         pr_context = {
-            'repo_name': repo_name,
-            'pr_number': pr_number,
-            'title': pr_data.get('title', ''),
-            'description': pr_data.get('body', '')
         }
         
         # Apply findings filter (including final directory exclusion)
         kept_findings, excluded_findings, analysis_summary = apply_findings_filter(
-            findings_filter, original_findings, pr_context, github_client
+            findings_filter, original_findings, pr_context
         )
         
         # Prepare output
         output = {
-            'pr_number': pr_number,
-            'repo': repo_name,
+            'url': github_url,
             'findings': kept_findings,
             'analysis_summary': results.get('analysis_summary', {}),
             'filtering_summary': {
