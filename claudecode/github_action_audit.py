@@ -528,6 +528,10 @@ def main():
         print(f"attempting to write results to {filename}")
         with open(filename, 'w') as f:
             f.write(json.dumps(output, indent=2))
+        promptfile="./prompt.txt"
+        print(f"attempting to output prompt to {promptfile}")
+        with open(promptfile, "w") as f:
+            f.write(prompt)
         
         # Exit with appropriate code
         high_severity_count = len([f for f in kept_findings if f.get('severity', '').upper() == 'HIGH'])
