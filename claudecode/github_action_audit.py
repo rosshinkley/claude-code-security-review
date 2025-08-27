@@ -497,6 +497,8 @@ def main():
         success, error_msg, results = claude_runner.run_security_audit(repo_dir, prompt)
         print(" ===== raw results")
         print(results)
+        print(error_msg)
+        print(success)
         print("===================")
                
         # Filter findings to reduce false positives
