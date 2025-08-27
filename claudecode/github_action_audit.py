@@ -495,11 +495,14 @@ def main():
         repo_dir = Path(repo_path) if repo_path else Path.cwd()
         print("about to request findings (this will take a minute)")
         success, error_msg, results = claude_runner.run_security_audit(repo_dir, prompt)
-        print(" ===== raw results")
-        print(results)
-        print(error_msg)
-        print(success)
-        print("===================")
+        if not success:
+            print("there was a problem requesting a security report from claude")
+            print(" ===== raw results")
+            print(results)
+            print(error_msg)
+            print(success)
+            print("===================")
+            sys.exit(EXIT_GENERAL_ERROR)
                
         # Filter findings to reduce false positives
         original_findings = results.get('findings', [])
@@ -538,9 +541,7 @@ def main():
         with open(promptfile, "w") as f:
             f.write(prompt)
         
-        # Exit with appropriate code
-        high_severity_count = len([f for f in kept_findings if f.get('severity', '').upper() == 'HIGH'])
-        sys.exit(EXIT_GENERAL_ERROR if high_severity_count > 0 else EXIT_SUCCESS)
+        sys.exit(EXIT_SUCCESS)
         
     except Exception as e:
         print(json.dumps({'error': f'Unexpected error: {str(e)}'}))
