@@ -495,6 +495,9 @@ def main():
         repo_dir = Path(repo_path) if repo_path else Path.cwd()
         print("about to request findings (this will take a minute)")
         success, error_msg, results = claude_runner.run_security_audit(repo_dir, prompt)
+        print(" ===== raw results")
+        print(results)
+        print("===================")
                
         # Filter findings to reduce false positives
         original_findings = results.get('findings', [])
